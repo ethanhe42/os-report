@@ -1,2 +1,1 @@
-# compilers-paper
 # os-report
