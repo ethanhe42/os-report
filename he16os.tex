@@ -1,0 +1,235 @@
+\documentclass{article}
+\usepackage{CJKutf8}
+\usepackage{indentfirst}
+\usepackage{graphics}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{pgffor}
+\usepackage[toc,page]{appendix}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+	language=C,
+	aboveskip=3mm,
+	belowskip=3mm,
+	showstringspaces=false,
+	columns=flexible,
+	basicstyle={\small\ttfamily},
+	numbers=none,
+	numberstyle=\tiny\color{gray},
+	keywordstyle=\color{blue},
+	commentstyle=\color{dkgreen},
+	stringstyle=\color{mauve},
+	breaklines=true,
+	breakatwhitespace=true,
+	tabsize=3
+}
+\setlength{\parindent}{2em}
+\renewcommand{\contentsname}{目录}
+\renewcommand{\listfigurename}{插图目录}
+\renewcommand{\listtablename}{表格目录}
+\renewcommand{\refname}{参考文献}
+\renewcommand{\abstractname}{摘要}
+\renewcommand{\indexname}{索引}
+\renewcommand{\tablename}{表}
+\renewcommand{\figurename}{图}
+\renewcommand{\appendixname}{附录}
+
+\newcommand{\incpng}[1]{\includegraphics[resolution=180]{#1}}
+%opening
+\date{2016年11月}
+\title{操作系统实验报告}
+\author{何宜晖\\计算机46\\2140504137\\电信学院\\heyihui@stu.xjtu.edu.cn}
+
+\begin{document}
+\begin{CJK}{UTF8}{gkai}
+%gkai gbsn
+\begin{figure}
+\centering
+\includegraphics[width=0.6\linewidth]{/home/eli/Pictures/xjtu}
+\end{figure}
+
+
+\maketitle
+\clearpage
+\section{实验一:用户接口实验}
+为了使用户通过操作系统完成各项管理任务,操作系统必须为用户提供各种接口来实
+现人机交互。经典的操作系统理论将操作系统的接口分为控制台命令和系统调用两种。前者
+主要提供给计算机的操作人员对计算机进行各种控制;而后者则提供个程序员,使他们可以
+方便地使用计算机的各种资源。
+\subsection{控制台命令接口}
+操作系统向用户提供一组控制台命令,用户可以通过终端输入命令的方式获得操作系统
+的服务,并由此来控制自己作业的运行。一般来讲,控制台命令应该包含:一组命令、终端
+处理程序以及命令解释程序
+
+\includegraphics[resolution=180]{../1}
+\subsection{系统调用}
+\begin{enumerate}
+\item 查看 bash 版本, 4.3.46
+\item 编写 bash 脚本:统计/my 目录下 c 语言文件的个数
+\end{enumerate}
+
+\includegraphics[resolution=180]{../2}
+
+\subsection{编程调用一个系统调用 fork()}
+\includegraphics[resolution=180]{../3}
+
+\subsection{kernel 编译}
+\subsubsection{文件准备}
+ubuntu version: 16.10, kernel version: 4.8.9
+
+\includegraphics[resolution=180]{../v}
+
+首先在 http://kernel.org 上面下载需要编译的版本的内核。下载完成的源码包,为*.tar.xz 的格式。在任意目录解压源码包。
+
+\includegraphics[resolution=180]{../4}
+
+\subsubsection{依赖包准备}
+更新软件列表,安装必备组件. 系统自带的是g++ 6.2, 需要降级至 5.4 . 否则后面编译会出问题。
+
+\includegraphics[resolution=180]{../gpp}
+
+若使用 menuconfig 生成配置文件,首先要安装相关的依赖库。 我使用menuconfig。
+
+\subsubsection{编译过程}
+\textbf{编译配置文件的生成}
+
+\incpng{../menu}
+
+\textbf{开始编译}
+
+一开始编译失败，原因是使用了gcc6,切换至gcc5后正常，先make clean，再make。
+
+\incpng{../clean}
+
+在确保.config 文件已经正确生成的前提之下,就可以开始编译内核了(可以使用-j 参数
+加速编译过程)
+
+CODE:make
+
+\incpng{../make}
+
+编译完成
+
+\incpng{../finish}
+
+\textbf{安装模块和内核}
+
+由于版本差异在 3.10 版本以上的内核编译时首先进行模块安装
+
+CODE: sudo make modules\_install
+
+\incpng{../modules}
+
+\incpng{../modfi}
+
+之后再进行内核安装, 在 3.10 版本以上的内核安装时,会自动进行 initrd 的生成以及 GRUB
+的更新
+
+CODE: sudo make install
+
+\incpng{../install}
+
+
+完成之后直接重启,之后查看 uname
+
+\subsubsection{使用新内核启动}
+\textbf{查看新系统的内核版本}
+
+\incpng{../v}
+
+\subsubsection{添加 System\_call}
+本实验基于上个实验,首先要保证能够正常进入自己编译的内核之后。在做此实验。
+
+\textbf{源文件的更改}
+
+\incpng{../newcall}
+
+\textbf{编写新的系统调用,编写编译配置文件}
+
+\incpng{../c}
+
+\textbf{添加系统调用入口}
+
+4.8.9 调用入口位置不太一样， 在
+\begin{verbatim}
+        vi x86/entry/syscalls/syscall_64.tbl
+\end{verbatim}
+
+\incpng{../entry}
+
+\textbf{修改整体调用}
+
+修改文件/include/linux/syscalls.h,在这个文件的最后按照格式添加上自己的系统调用。
+
+\incpng{../linuxcall}
+
+\textbf{添加新系统调用至内核编译的配置文件}
+
+更改 kernel 编译的 Makefile,添加进自己的系统调用。
+更改所示的那一行,添加入自己所编写的系统调用的文件夹。
+
+\incpng{../core}
+
+\subsubsection{编译更改之后的内核源码}
+\incpng{../make}
+\subsubsection{测试新的 System\_call}
+\incpng{../test}
+
+
+
+\section{实验二:进程管理}
+系统调用是一种进入系统空间的办法。通常,在 OS 的核心中都设置了一组用于实现各
+种系统功能的子程序,
+并将他们提供给程序员使用。
+程序员在需要 OS 提供某种服务的时候,
+便可以调用一条系统调用命令,去实现希望的功能,这就是系统调用。因此,系统调用就像
+一个黑箱子一样,对用户屏蔽了操作系统的具体动作而只是提供了调用功能的接口。
+
+调用fork时，返回值为0表示子进程，返回值大于0表示父进程，小于0表示调用失败。
+\lstinputlisting{../a.c}
+
+\incpng{../ac}
+
+\lstinputlisting{../b.c}
+
+\incpng{../bc}
+
+\section{实验三:存储器管理实验}
+本实验并没有进入系统空间对实际进程页面进行控制,而是在用户空间用线性表的连续
+存储方式对进程页面交换进行模拟。
+
+实现FIFO，LRU，NUR，OPT算法。
+
+\lstinputlisting{../fs/task3.cpp}
+
+访问序列使用实验指导书上的例子, 运行结果：
+
+\incpng{../page}
+
+\section{实验四:文件系统实验}
+这是相对来说有一定难度的实验,它含盖了一个简单的二级文件系统的设计以及相关的
+接口命令编写的内容,也鉴于此把它放在了最后一个实验。“一分耕耘,一分收获”,在完
+整的完成本实验,你将获得的收益是:对文件系统工作的机理,特别是 linux 的 ext2 文件
+系统工作机理了如指掌;linux 下较强的编程能力。好了,从此开始:
+
+%\lstinputlisting{../fs/os2.cpp}
+
+{\small
+	\bibliographystyle{ieee}
+	\bibliography{he16yacc}
+}
+\clearpage
+
+\appendix
+\section{样例代码与输出}\label{append}
+
+
+\end{CJK}
+\end{document}
