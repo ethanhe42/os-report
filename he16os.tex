@@ -43,7 +43,7 @@
 
 \newcommand{\incpng}[1]{\includegraphics[resolution=180]{#1}}
 %opening
-\date{2016年11月}
+\date{2016年12月}
 \title{操作系统实验报告}
 \author{何宜晖\\计算机46\\2140504137\\电信学院\\heyihui@stu.xjtu.edu.cn}
 
@@ -183,7 +183,7 @@ CODE: sudo make install
 \incpng{../test}
 
 
-
+\clearpage
 \section{实验二:进程管理}
 系统调用是一种进入系统空间的办法。通常,在 OS 的核心中都设置了一组用于实现各
 种系统功能的子程序,
@@ -192,43 +192,613 @@ CODE: sudo make install
 便可以调用一条系统调用命令,去实现希望的功能,这就是系统调用。因此,系统调用就像
 一个黑箱子一样,对用户屏蔽了操作系统的具体动作而只是提供了调用功能的接口。
 
+\subsection{进程的软中断通信}
+
 调用fork时，返回值为0表示子进程，返回值大于0表示父进程，小于0表示调用失败。
 \lstinputlisting{../a.c}
 
+\subsubsection{实验结果}
+
 \incpng{../ac}
+
+\subsection{进程的管道通信}
 
 \lstinputlisting{../b.c}
 
+\subsubsection{实验结果}
+
 \incpng{../bc}
 
+\clearpage
 \section{实验三:存储器管理实验}
 本实验并没有进入系统空间对实际进程页面进行控制,而是在用户空间用线性表的连续
 存储方式对进程页面交换进行模拟。
 
 实现FIFO，LRU，NUR，OPT算法。
 
+\subsection{源码}
 \lstinputlisting{../fs/task3.cpp}
 
+\subsection{实验结果}
 访问序列使用实验指导书上的例子, 运行结果：
 
 \incpng{../page}
 
+\clearpage
 \section{实验四:文件系统实验}
 这是相对来说有一定难度的实验,它含盖了一个简单的二级文件系统的设计以及相关的
 接口命令编写的内容,也鉴于此把它放在了最后一个实验。“一分耕耘,一分收获”,在完
 整的完成本实验,你将获得的收益是:对文件系统工作的机理,特别是 linux 的 ext2 文件
 系统工作机理了如指掌;linux 下较强的编程能力。好了,从此开始:
 
+\subsection{文件系统的数据结构}
+\subsubsection{i 节点}
+\begin{lstlisting}
+struct inode{
+	struct inode  *i_forw = NULL;
+	struct inode  *i_back = NULL;
+	bool I_flag;
+	unsigned long i_into;    
+	unsigned int di_number; 
+
+	unsigned int di_mode; 
+	unsigned int di_uid;  
+	unsigned int di_gid;  
+
+	//unsigned int di_addr[NADDR];    
+
+	bool isDir;
+	dir* directory;
+	char data[100];
+	unsigned int i_size;
+
+	inode(long into,int uid,int gid,int mode){
+		i_into = into;
+		i_forw = NULL;
+		i_back = NULL;
+		i_size = 0;
+		di_uid = uid;
+		di_gid = gid;
+
+		di_mode = mode;
+	}
+};
+\end{lstlisting}
+
+\subsubsection{磁盘 i 结点}
+\begin{lstlisting}
+struct dinode
+{
+	unsigned int di_number;    
+	unsigned int di_mode;   
+
+	unsigned int di_uid;
+	unsigned int di_gid;
+	unsigned long di_size;    
+	unsigned int di_addr[NADDR];
+};
+\end{lstlisting}
+
+\subsubsection{目录项结构}
+\begin{lstlisting}
+struct direct
+{
+	string d_name;     
+	inode* pointer;   
+};
+\end{lstlisting}
+\subsubsection{超级块}
+\begin{lstlisting}
+class filsys
+{
+private:
+	//unsigned int  s_isize;  
+	//unsigned long s_fsize;    
+
+	//unsigned int s_nfree;    
+	//unsigned int s_pfree;   
+	//unsigned int s_free[NICFREE]; 
+
+
+	unsigned long s_ninode;       
+
+	list<inode*>::iterator s_pinode;    
+	list<inode*> inode_list;
+
+	unsigned int s_inode[NICINOD]; 
+	unsigned int s_rinode;        
+	char s_fmod;               
+
+	inode* cur_positon;
+
+public:
+	filsys(){
+		s_ninode = 0;
+		//s_pinode = 0;
+		cur_positon = 0;
+	}
+
+	bool initial(long size,int uid,int gid,int mode){
+		s_ninode = size;
+		for (int i = 0; i < size; i++){
+			inode_list.push_back(new inode(i,uid,gid,mode));
+		}
+		inode* root_dir=inode_list.front();
+		root_dir->directory = new dir;
+		root_dir->directory->size = 0;
+		root_dir->isDir = true;
+
+		s_ninode = size - 1;
+		cur_positon = root_dir;
+
+		list<inode*>::iterator temp =inode_list.begin();
+		s_pinode = ++temp;
+		return true;
+	}
+
+	inode* firstFreeInode(){
+		if (s_ninode > 0){
+			return *s_pinode;
+		}
+		else {
+			cout << "The disk is full!" << endl;
+			return NULL;
+		}
+	}
+
+	void refresh_pinode(){
+		if (s_ninode > 0)
+		{
+			int i = s_ninode;
+			list<inode*>::iterator temp = s_pinode;
+			(*temp)->I_flag = true;
+			while ((*temp)->I_flag == true && i > 0){
+				temp++;
+				i--;
+			}
+			s_pinode = temp;
+			s_ninode--;
+		}
+	}
+
+	void retrieveInode(inode* node){
+		if (*s_pinode > node){
+			while ((*s_pinode) != node)
+				s_pinode--;
+			s_ninode++;
+		}
+		else{
+			s_ninode++;
+		}
+	}
+
+	void mkdir(string dir_name){
+		if (cur_positon->isDir){
+			int& addpoint = cur_positon->directory->size;
+			if (addpoint == DIRNUM) cout << "The directory is full!" << endl;
+			else{
+				cur_positon->directory->directory[addpoint].d_name = dir_name;
+				inode* temp=firstFreeInode();
+				if (temp){
+					temp->isDir = true;
+					temp->i_forw = cur_positon;
+					temp->I_flag = true;
+					temp->directory = new dir;
+					temp->directory->size = 0;
+					cur_positon->directory->directory[addpoint].pointer = temp;
+					addpoint++;
+					refresh_pinode();
+				}
+				else cout << "Can not creat a directory!" << endl;
+			}
+		}
+		else cout << "Can not creat a directory!" << endl;
+	}
+
+	void cd(string dir_name){
+		if (cur_positon->isDir){
+			direct* temp;
+			int i = 0;
+			for (i = 0; i<cur_positon->directory->size; ){
+				temp =&( cur_positon->directory->directory[i]);
+				if (temp->d_name == dir_name)
+				{
+					cur_positon = temp->pointer;
+					return;
+				}
+				else if (temp->pointer != NULL){ i++; }
+			}
+			if (i == cur_positon->directory->size)
+				cout << "Can not find " << dir_name << endl;
+			else cout << "current position: " << dir_name << endl;
+		}
+		else{
+			cout << "Failed!" << endl;
+		}
+	}
+
+	void chdir(){
+		if (cur_positon != inode_list.front()){
+			cur_positon = cur_positon->i_forw;
+		}
+	}
+
+	void showDir(){
+		if (cur_positon->isDir){
+			int i = 0;
+			direct temp;
+			for (i = 0; i < DIRNUM; i++){
+				temp = cur_positon->directory->directory[i];
+				if (temp.d_name=="") continue;
+				if (temp.pointer->isDir)
+				{
+					cout << "directory  " << temp.pointer->di_uid << "  " << temp.pointer->di_gid << "  " << temp.d_name << endl;
+				}
+				else {
+					cout << "file      " << temp.pointer->di_uid << "  " << temp.pointer->di_gid << "  " << temp.d_name << endl;
+				}
+
+			}
+			if (i == 0) cout << "The directory is empty!";
+		}
+		else cout << "This is not a directory!";
+	}
+
+	void creatFile(string file_name,int size){
+		if (cur_positon->isDir && s_ninode > size){
+			int& addpoint = cur_positon->directory->size;
+			if (addpoint == DIRNUM) cout << "The directory is full!" << endl;
+			else{
+				cur_positon->directory->directory[addpoint].d_name = file_name;
+				inode* temp = firstFreeInode();
+				if (temp){
+					temp->isDir = false;
+					//cur_positon->i_back = temp;
+					temp->i_forw = cur_positon;
+					temp->I_flag = true;
+					temp->data[0] = '\0';
+					cur_positon->directory->directory[addpoint].pointer = temp;
+					addpoint++;
+					refresh_pinode();
+					size--;
+					for (size; size > 0; size--){
+						temp->i_back = firstFreeInode();
+						temp->isDir = false;
+						temp->i_forw->i_forw = cur_positon;
+						temp->I_flag = true;
+						temp->i_back->data[0] = '\0';
+						refresh_pinode();
+						temp = temp->i_back;
+					}
+				}
+				else cout << "Can not creat a file!" << endl;
+			}
+		}
+		else cout << "Can not creat a file!" << endl;
+	}
+
+	void closeFile(){
+		cur_positon = cur_positon->i_forw;
+	}
+
+	void extendFile(inode* filenode){
+		if (s_ninode > 0){
+			filenode->i_back = firstFreeInode();
+			filenode->i_back->isDir = false;
+			filenode->i_back->i_forw = filenode->i_forw;
+			filenode->i_back->I_flag = true;
+			filenode->i_back->data[0] = '\0';
+			refresh_pinode();
+		}
+		else{ cout << "Disk is full!" << endl; }
+	}
+
+	void editFile(inode* node){
+		inode* filenode = node;
+		cout << endl;
+		string context;
+		cin >> context;
+		int count = context.size() / 100 ;
+		for (int i = 0; i < count+1; i++)
+		{
+			for (int k = 0; k < 100; k++){
+				if (100 * i + k<context.size()){
+					filenode->data[k] = context.at(100 * i + k);
+					filenode->i_size++;
+				}
+				else{
+					filenode->data[k] = '\0';
+					break;
+				}
+			}
+			if (filenode->i_back != NULL) filenode = filenode->i_back;
+			else{
+				extendFile(filenode);
+				filenode = filenode->i_back;
+			}
+		}
+	}
+
+	void printFileContext(inode* filenode){
+		inode* temp = filenode;
+		while (temp){
+			cout << temp->data;
+			temp = temp->i_back;
+		}
+	}
+
+	void appendFileContext(inode* filenode){
+		inode* temp = filenode;
+		cout << endl;
+		string context;
+		cin >> context;
+		int num = context.size();
+		for (int i = 0; i < num; ){
+			if (temp->i_size < 100){
+				temp->data[temp->i_size++] = context.at(i);
+				i++;
+			}
+			else if (temp->i_back != NULL){
+				temp = temp->i_back;
+			}
+			else{
+				extendFile(temp);
+				temp = temp->i_back;
+			}
+		}
+		if (temp->i_size<100) temp->data[temp->i_size++] ='\0';
+	}
+
+	void fileOpMenu(inode* filenode)
+	{
+		bool flag = true;
+		while (flag)
+		{
+			cout << endl << "choose one of the actions below:(1 to 4)" << endl;
+			int i = 0;
+			i++;
+			cout << i << ".\t" << "correct content" << endl;
+			i++;
+			cout << i << ".\t" << "show content" << endl;
+			i++;
+			cout << i << ".\t" << "add content" << endl;
+			i++;
+			cout << i << ".\t" << "exit file" << endl;
+			int select;
+			cin >> select;
+			switch (select)
+			{
+			case 1:
+				editFile(filenode);
+				break;
+			case 2:
+				printFileContext(filenode);
+				break;
+			case 3:
+				appendFileContext(filenode);
+				break;
+			case 4:
+				flag = false;
+				cur_positon = cur_positon->i_forw;
+				break;
+			default:
+				break;
+			}
+		}
+	}
+
+	inode* findFileorDir(string name){
+		if (cur_positon->isDir){
+			direct* temp;
+			int i = 0;
+			int num = cur_positon->directory->size;
+			for (i; i < DIRNUM;i++){
+				temp = &(cur_positon->directory->directory[i]);
+				if (temp->d_name == name){
+					return temp->pointer;
+				}
+				/*else if (temp->pointer != NULL){
+					i++;
+				}*/
+			}
+		}
+		else return NULL;
+	}
+
+	void delFileorDirinDir(string name){
+		if (cur_positon->isDir){
+			direct* temp;
+			int i = 0;
+			int num = cur_positon->directory->size;
+			for (i; i < DIRNUM;i++){
+				temp = &(cur_positon->directory->directory[i]);
+				if (temp->d_name == name){
+					cur_positon->directory->directory[i].d_name = "";
+					cur_positon->directory->directory[i].pointer = NULL;
+					cur_positon->directory->size--;
+					return;
+				}
+				/*else if (temp->pointer != NULL){
+				}*/
+			}
+		}
+		else return;
+	}
+
+	void openFile(string file_name){
+		if (cur_positon->isDir){
+			direct* temp;
+			int i = 0;
+			int num = cur_positon->directory->size;
+			for (i = 0; i<DIRNUM;i++){
+				temp = &(cur_positon->directory->directory[i]);
+				if (temp->d_name == file_name){
+					cur_positon = temp->pointer;
+					fileOpMenu(cur_positon);
+					return;
+				}
+				//else if (temp->pointer != NULL){ i++; }
+			}
+			if (i == cur_positon->directory->size-1)
+				cout << "Can not find " << file_name << endl;
+			else cout << "current position: " << file_name << endl;
+		}
+		else{
+			cout << "Failed!" << endl;
+		}
+	}
+
+	void deleteFile(){
+		cout << endl << "input file name:";
+		string fname;
+		cin >> fname;
+		inode* fnode=findFileorDir(fname);
+		if (fnode){
+			while (fnode){
+				fnode->data[0] = '\0';
+				fnode->I_flag = false;
+				fnode->i_forw = NULL;
+				inode* temp = fnode->i_back;
+				fnode->i_back = NULL;
+				fnode->i_size = 0;
+				retrieveInode(fnode);
+				fnode = temp;
+				delFileorDirinDir(fname);
+			}
+		}
+		else{
+			cout <<endl<< fname << " can not found." << endl;
+		}
+	}
+
+	void deleteDir(){
+		cout << endl << "input directory name:";
+		string dname;
+		cin >> dname;
+		inode* fnode = findFileorDir(dname);
+		if (fnode && fnode->di_number!=0){
+			delete fnode->directory;
+			fnode->isDir = false;
+			fnode->i_back = NULL;
+			fnode->I_flag = false;
+			delFileorDirinDir(dname);
+		}
+		else{
+			cout << "failed" << endl;
+		}
+	}
+};
+\end{lstlisting}
+\subsubsection{用户密码}
+\begin{lstlisting}
+struct pwd
+{
+	unsigned int P_uid;
+	unsigned int P_gid;
+	char passward[PWOSIZ];
+};
+\end{lstlisting}
+
+\subsubsection{目录}
+\begin{lstlisting}
+struct dir
+{
+	struct direct directory[DIRNUM];
+	int size;
+};
+\end{lstlisting}
+
+\subsubsection{查找 i 内存节点的 hash 表}
+\begin{lstlisting}
+struct hinode
+{
+strut inode *iforw;
+}
+\end{lstlisting}
+
+\subsubsection{系统打开表}
+\begin{lstlisting}
+struct file
+{
+	char f_flag;
+	unsigned int f_count;
+	struct inode *f_inode; 
+	unsigned long f_off; 
+};
+\end{lstlisting}
+
+\subsubsection{用户打开表}
+\begin{lstlisting}
+class user
+{
+private:
+	string user_name;
+	string pwd;
+	bool active;
+	unsigned int u_default_mode;
+	unsigned int u_uid;
+	unsigned int u_gid; 
+	unsigned int u_ofile[NOFILE]; 
+	string cur_postion;
+public:
+	user(string name, string pw, short uid, short gid, short mode)
+	{
+		user_name = name;
+		pwd = pw;
+		u_default_mode = mode;
+		u_uid = uid;
+		u_gid = gid;
+		active = false;
+	}
+
+	string getName(){ return user_name; }
+
+	int getUsrid(){ return u_uid; }
+
+	int gerGrpid(){ return u_gid; }
+
+	bool login_account(string password)
+	{
+		if (pwd == password)
+		{
+			active = true;
+			return true;
+		}
+		else{
+			return false;
+		}
+	}
+
+	void setActive(bool act){
+		active = act;
+	}
+	//~user();
+};
+\end{lstlisting}
+
+\subsection{主要函数}
+\lstinputlisting[linerange={537-800}]{../fs/os2.cpp}
 %\lstinputlisting{../fs/os2.cpp}
 
-{\small
-	\bibliographystyle{ieee}
-	\bibliography{he16yacc}
-}
-\clearpage
+\subsection{实验结果}
+\incpng{../fs}
 
-\appendix
-\section{样例代码与输出}\label{append}
+\incpng{../file}
+
+\section{实验感想}
+通过这几个实验，我认识到了从操作系统的概念，到真正实现操作系统，还有很长的路要走。同时也发现，操作系统可以分成多个部分，分别实现。
+
+最后还要感谢老师，TA们的悉心教诲！
+
+\section*{参考资料}
+\begin{enumerate}
+\item 操作系统实验指导书
+\item linux 内核源码 include/linux/
+\end{enumerate}
+
+%\clearpage
+%\appendix
+%\section{样例代码与输出}\label{append}
 
 
 \end{CJK}
